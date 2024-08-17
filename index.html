@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OWL BUSTER</title>
+    <link rel="shortcut icon" href="https://seeklogo.com/images/O/owl-logo-A4C8EF1714-seeklogo.com.png" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-div {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #1f2937;
+            /* Gray-800 */
+            margin: 5px;
+        }
+
+        .btn {
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .timer {
+            font-size: 1.25rem;
+            color: #9ca3af;
+        }
+
+        /* Make the table responsive */
+        @media (max-width: 768px) {
+            table {
+                width: 100%;
+                overflow-x: auto;
+                display: block;
+            }
+
+            th, td {
+                white-space: nowrap;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center">
+    <div class="container mx-auto p-8">
+        <div class="w-full max-w-2xl mx-auto">
+            <div class="mb-4">
+                <label for="websites" class="block text-lg font-medium">Paste Websites (one per line)</label>
+                <textarea id="websites"
+                    class="w-full p-4 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows="6" placeholder="https://example.com&#10;https://another-example.com"></textarea>
+            </div>
+            <div class="flex space-x-4">
+                <button id="crawlButton"
+                    class="w-full py-3 bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 btn">Start Crawling</button>
+                <button id="stopButton"
+                    class="w-full py-3 bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 btn" disabled>Stop Crawling</button>
+                <button id="reloadButton"
+                    class="w-full py-3 bg-gray-600 rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 btn">Reload</button>
+            </div>
+
+            <div id="progress" class="mt-4 hidden">
+                <div class="w-full bg-gray-700 rounded-full h-4 overflow-hidden">
+                    <div id="progressBar" class="bg-blue-600 h-full" style="width: 0%;"></div>
+                </div>
+                <p id="progressText" class="mt-2 text-center text-gray-400">0% completed</p>
+                <p id="timeElapsed" class="mt-2 text-center timer">Time Elapsed: 0:00</p>
+            </div>
+
+            <!-- Status display -->
+            <div class="mt-4 flex justify-around">
+                <div id="websitesInputted" class="status-div">Websites Inputted: 0</div>
+                <div id="websitesCrawled" class="status-div">Websites Crawled: 0</div>
+                <div id="emailsFound" class="status-div">Emails Found: 0</div>
+            </div>
+        </div>
+
+        <div id="output" class="w-full max-w-2xl mx-auto mt-8 p-4 bg-gray-800 rounded-lg hidden">
+            <h2 class="text-xl font-semibold mb-4">Crawled Emails</h2>
+            <table id="emailTable" class="w-full text-left text-gray-300 overflow-x-auto">
+                <thead>
+                    <tr>
+                        <th class="py-2 px-4 border-b border-gray-700">Website</th>
+                        <th class="py-2 px-4 border-b border-gray-700">Emails</th>
+                    </tr>
+                </thead>
+                <tbody id="emailResults">
+                    <!-- Results will be appended here -->
+                </tbody>
+            </table>
+            <button id="exportButton"
+                class="mt-4 py-2 px-4 bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">Export as CSV</button>
+        </div>
+    </div>
+
+    <script>
+        let controller;
+        let timerInterval;
+
+        const startTimer = () => {
+            let startTime = Date.now();
+            timerInterval = setInterval(() => {
+                let elapsed = Date.now() - startTime;
+                let minutes = Math.floor(elapsed / 60000);
+                let seconds = Math.floor((elapsed % 60000) / 1000);
+                document.getElementById('timeElapsed').textContent = `Time Elapsed: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        };
+
+        const stopTimer = () => {
+            clearInterval(timerInterval);
+        };
+
+        const startCrawling = async () => {
+            const websitesInput = document.getElementById('websites').value;
+            const websites = websitesInput.split('\n').map(site => site.trim()).filter(site => site);
+
+            // Show progress bar and timer
+            document.getElementById('progress').classList.remove('hidden');
+            document.getElementById('output').classList.add('hidden');
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressText').textContent = '0% completed';
+            startTimer();
+
+            controller = new AbortController();
+            const { signal } = controller;
+
+            try {
+                const response = await fetch('http://localhost:3000/crawl', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ websites }),
+                    signal
+                });
+
+                const result = await response.json();
+                const { websitesInputted, websitesCrawled: crawled, emailsFound: found, results } = result;
+
+                // Update status
+                document.getElementById('websitesInputted').textContent = `Websites Inputted: ${websitesInputted}`;
+                document.getElementById('websitesCrawled').textContent = `Websites Crawled: ${crawled}`;
+                document.getElementById('emailsFound').textContent = `Emails Found: ${found}`;
+
+                // Hide progress bar and show output
+                document.getElementById('progress').classList.add('hidden');
+                document.getElementById('output').classList.remove('hidden');
+                stopTimer();
+
+                // Populate table with results
+                const emailResultsDiv = document.getElementById('emailResults');
+                emailResultsDiv.innerHTML = '';
+
+                for (const site in results) {
+                    const emails = results[site].map(email => `<div>${email}</div>`).join('');
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td class="py-2 px-4 border-b border-gray-700">${site}</td><td class="py-2 px-4 border-b border-gray-700">${emails}</td>`;
+                    emailResultsDiv.appendChild(row);
+                }
+
+                // Add export functionality
+                document.getElementById('exportButton').addEventListener('click', () => {
+                    const csvContent = 'data:text/csv;charset=utf-8,' +
+                        'Website,Emails\n' +
+                        Object.keys(results).map(site => `${site},"${results[site].join('\n')}"`).join('\n');
+
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', encodedUri);
+                    link.setAttribute('download', `crawled_emails_${Date.now()}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Crawling stopped');
+                } else {
+                    console.error('Error during crawling:', error);
+                }
+            } finally {
+                document.getElementById('crawlButton').disabled = false;
+                document.getElementById('stopButton').disabled = true;
+                stopTimer();
+            }
+        };
+
+        document.getElementById('crawlButton').addEventListener('click', () => {
+            startCrawling();
+            document.getElementById('crawlButton').disabled = true;
+            document.getElementById('stopButton').disabled = false;
+        });
+
+        document.getElementById('stopButton').addEventListener('click', () => {
+            if (controller) {
+                controller.abort();
+            }
+        });
+
+        document.getElementById('reloadButton').addEventListener('click', () => {
+            window.location.reload();
+        });
+    </script>
+</body>
+
+</html>
